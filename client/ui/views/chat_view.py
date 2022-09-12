@@ -118,10 +118,11 @@ my_border_style = Style(color="rgb(150, 255, 150)")
 
 
 def message_to_panel(message: dict, active_user: User) -> Panel:
-    un = message.get(FIELDS_CHAT_MESSAGE.username)
+    id = message.get(FIELDS_CHAT_MESSAGE.authorid)
+    un = message.get(FIELDS_CHAT_MESSAGE.authorname)
     m = message.get(FIELDS_CHAT_MESSAGE.message)
     # eventuall parse date here
-    mine = un == active_user.username
+    mine = id == active_user.userid
     p = Panel(
         m or "",
         box=box.ROUNDED,

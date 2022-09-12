@@ -225,7 +225,7 @@ class HamletProtocol(AbstractChatClientProtocol):
                     MESSAGE_TYPE: MESSAGE_TYPES.chat,
                     FIELDS_CHAT_MESSAGES.messages: [
                         {
-                            FIELDS_CHAT_MESSAGE.username: messages[idx]["username"],
+                            FIELDS_CHAT_MESSAGE.authorname: messages[idx]["username"],
                             FIELDS_CHAT_MESSAGE.authorid: messages[idx]["userid"],
                             FIELDS_CHAT_MESSAGE.roomid: "1",
                             FIELDS_CHAT_MESSAGE.target_userid: None,
