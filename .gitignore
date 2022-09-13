@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+# exe files
+*.exe
+
+# database files
+*.db
+
 # Distribution / packaging
 .Python
 build/
