@@ -123,10 +123,10 @@ class SqliteDatabase(AbstractDatabase):
             cursor.execute(CREATE_TABLE_BLACKLIST)
 
             # Create NONE user (reference for messages.target_userid)
-            data = (str(uuid.uuid4()), "NONE", "NONE")
+            data = ("NONE", "NONE", "NONE")
             cursor.execute(INSERT_USER, data)
 
-            data = (str(uuid.uuid4()), "NONE")
+            data = ("NONE", "NONE")
             cursor.execute(INSERT_ROOM, data)
 
     def open_connection(self) -> sqlite3.Connection | None:
