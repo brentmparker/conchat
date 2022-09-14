@@ -178,7 +178,6 @@ class SqliteDatabase(AbstractDatabase):
 
     def insert_chat_message(
         self,
-        authorname: str,
         authorid: str,
         roomid: str | None,
         target_userid: str | None,
