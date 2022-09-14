@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY UNIQUE NOT NULL,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
-    createdate TEXT NOT NULL
+    createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW'))
 );
 """
 DROP_TABLE_USERS = """
@@ -21,7 +21,7 @@ CREATE_TABLE_ROOMS = """
 CREATE TABLE IF NOT EXISTS rooms (
     id TEXT PRIMARY KEY UNIQUE NOT NULL,
     name TEXT UNIQUE NOT NULL,
-    createdate TEXT NOT NULL
+    createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW'))
 );
 """
 DROP_TABLE_ROOMS = """
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS messages (
     roomid TEXT NOT NULL DEFAULT 'NONE',
     target_userid TEXT NOT NULL DEFAULT 'NONE',
     message TEXT NOT NULL,
-    createdate TEXT NOT NULL,
+    createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW')),
     FOREIGN KEY (authorid)
         REFERENCES users (id)
         ON DELETE CASCADE
@@ -58,7 +58,7 @@ CREATE_TABLE_BLACKLIST = """
 CREATE TABLE IF NOT EXISTS blacklisted_users (
     userid TEXT NOT NULL,
     blocked_userid TEXT NOT NULL,
-    createdate TEXT NOT NULL,
+    createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW')),
     FOREIGN KEY (userid)
         REFERENCES users (id)
         ON DELETE CASCADE
@@ -77,26 +77,60 @@ INSERT_USER = """
 INSERT INTO users (
     id,
     username,
-    password,
-    createdate
+    password
 ) VALUES (
     ?,
     ?,
-    ?,
-    datetime('now')
+    ?
 );
 """
 
 INSERT_ROOM = """
 INSERT INTO rooms (
     id,
-    name,
-    createdate
+    name
+) VALUES (
+    ?,
+    ?
+)
+"""
+
+INSERT_MESSAGE = """
+INSERT INTO messages (
+    id,
+    authorid,
+    roomid,
+    target_userid,
+    message
 ) VALUES (
     ?,
     ?,
-    datetime('now')
-)
+    ?,
+    ?,
+    ?
+);
+"""
+
+INSERT_BLACKLIST = """
+INSERT INTO blacklisted_users (
+    userid,
+    blocked_userid
+) VALUES (
+    ?,
+    ?
+);
+"""
+
+SELECT_RECENT_USER = """
+SELECT * FROM users WHERE rowid = ?;
+"""
+
+SELECT_RECENT_ROOM = """
+SELECT * FROM rooms WHERE rowid = ?;
+"""
+
+SELECT_RECENT_MESSAGE = """
+SELECT * FROM messages WHERE rowid = ?;
 """
 
 
@@ -129,6 +163,8 @@ class SqliteDatabase(AbstractDatabase):
             data = ("NONE", "NONE")
             cursor.execute(INSERT_ROOM, data)
 
+            conn.commit()
+
     def open_connection(self) -> sqlite3.Connection | None:
         conn: sqlite3.Connection = None
         try:
@@ -151,10 +187,45 @@ class SqliteDatabase(AbstractDatabase):
         pass
 
     def insert_user(self, username: str, password: str) -> Dict[str, str]:
-        pass
+        conn = self.open_connection()
+        if conn is None:
+            return
+
+        result: Dict[str, str] = None
+
+        with conn:
+            user = (str(uuid.uuid4()), username, password)
+            cursor = conn.cursor()
+            cursor.execute(INSERT_USER, user)
+            if cursor.rowcount != 1:
+                raise sqlite3.Error(f"Error inserting user: {user}")
+
+            conn.commit()
+            # Select inserted user
+            cursor.execute(SELECT_RECENT_USER, (cursor.lastrowid,))
+            row = cursor.fetchone()
+            result = {"id": row[0], "username": row[1], "createdate": row[3]}
+        return result
 
     def insert_room(self, name: str) -> Dict[str, str]:
-        pass
+        conn = self.open_connection()
+        if conn is None:
+            return
+
+        result: Dict[str, str] = None
+        with conn:
+            room = (str(uuid.uuid4()), name)
+            cursor = conn.cursor()
+            cursor.execute(INSERT_ROOM, room)
+            if cursor.rowcount != 1:
+                raise sqlite3.Error(f"Error inserting room: {room}")
+
+            conn.commit()
+
+            row = cursor.execute(SELECT_RECENT_ROOM, (cursor.lastrowid,)).fetchone()
+            result = {"id": row[0], "name": row[1], "createdate": row[2]}
+
+        return result
 
     def insert_blacklist(self, userid: str, blocked_userid: str):
         pass
@@ -166,6 +237,15 @@ class SqliteDatabase(AbstractDatabase):
         pass
 
 
+def test(db: SqliteDatabase):
+    user1 = db.insert_user("Test", "test")
+    room1 = db.insert_room("Lobby")
+    message1 = db.insert_chat_message(
+        user1["username"], user1["id"], room1["id"], "NONE", "I'm a message!"
+    )
+
+
 if __name__ == "__main__":
     db = SqliteDatabase()
     db._initialize_database(drop=True)
+    test(db)
