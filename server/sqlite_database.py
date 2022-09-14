@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 import sqlite3
 import uuid
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS blacklisted_users (
     userid TEXT NOT NULL,
     blocked_userid TEXT NOT NULL,
     createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW')),
+    UNIQUE(userid, blocked_userid),
     FOREIGN KEY (userid)
         REFERENCES users (id)
         ON DELETE CASCADE
@@ -130,12 +132,42 @@ SELECT * FROM rooms WHERE rowid = ?;
 """
 
 SELECT_RECENT_MESSAGE = """
-SELECT * FROM messages WHERE rowid = ?;
+SELECT 
+    m.id,
+    u.username AS authorname,
+    m.authorid,
+    m.roomid,
+    m.target_userid,
+    m.message,
+    m.createdate
+FROM messages AS m 
+INNER JOIN users AS u 
+    ON m.authorid = u.id
+WHERE m.rowid = ?;
+"""
+
+SELECT_RECENT_BLACKLIST = """
+SELECT * FROM blacklisted_users WHERE rowid = ?;
 """
 
 
+class AbstractID(ABC):
+    @abstractmethod
+    def id() -> str:
+        pass
+
+
+class UUID(AbstractID):
+    def id(self) -> str:
+        return str(uuid.uuid4())
+
+
 class SqliteDatabase(AbstractDatabase):
-    def __init__(self) -> None:
+    def __init__(
+        self, db_name: str = DBNAME, id_generator: AbstractID = UUID()
+    ) -> None:
+        self.db_name = db_name
+        self.id_gen = id_generator
         super().__init__()
 
     def _initialize_database(self, drop: bool = False) -> None:
@@ -169,7 +201,8 @@ class SqliteDatabase(AbstractDatabase):
         conn: sqlite3.Connection = None
         try:
             conn = sqlite3.connect(
-                DBNAME, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+                self.db_name,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             )
         except sqlite3.Error as e:
             print(e)
@@ -182,10 +215,7 @@ class SqliteDatabase(AbstractDatabase):
         roomid: str | None,
         target_userid: str | None,
         message: str,
-    ) -> Dict[str, str]:
-        pass
-
-    def insert_user(self, username: str, password: str) -> Dict[str, str]:
+    ) -> Dict[str, str] | None:
         conn = self.open_connection()
         if conn is None:
             return
@@ -193,7 +223,33 @@ class SqliteDatabase(AbstractDatabase):
         result: Dict[str, str] = None
 
         with conn:
-            user = (str(uuid.uuid4()), username, password)
+            message = (self.id_gen.id(), authorid, roomid, target_userid, message)
+            cursor = conn.cursor()
+            cursor.execute(INSERT_MESSAGE, message)
+            if cursor.rowcount != 1:
+                raise sqlite3.Error(f"Error inserting message: {message}")
+            conn.commit()
+            row = cursor.execute(SELECT_RECENT_MESSAGE, (cursor.lastrowid,)).fetchone()
+            result = {
+                "id": row[0],
+                "authorname": row[1],
+                "authorid": row[2],
+                "roomid": row[3],
+                "target_userid": row[4],
+                "message": row[5],
+                "createdate": row[6],
+            }
+        return result
+
+    def insert_user(self, username: str, password: str) -> Dict[str, str] | None:
+        conn = self.open_connection()
+        if conn is None:
+            return
+
+        result: Dict[str, str] = None
+
+        with conn:
+            user = (self.id_gen.id(), username, password)
             cursor = conn.cursor()
             cursor.execute(INSERT_USER, user)
             if cursor.rowcount != 1:
@@ -206,14 +262,14 @@ class SqliteDatabase(AbstractDatabase):
             result = {"id": row[0], "username": row[1], "createdate": row[3]}
         return result
 
-    def insert_room(self, name: str) -> Dict[str, str]:
+    def insert_room(self, name: str) -> Dict[str, str] | None:
         conn = self.open_connection()
         if conn is None:
             return
 
         result: Dict[str, str] = None
         with conn:
-            room = (str(uuid.uuid4()), name)
+            room = (self.id_gen.id(), name)
             cursor = conn.cursor()
             cursor.execute(INSERT_ROOM, room)
             if cursor.rowcount != 1:
@@ -226,14 +282,43 @@ class SqliteDatabase(AbstractDatabase):
 
         return result
 
-    def insert_blacklist(self, userid: str, blocked_userid: str):
-        pass
+    def insert_blacklist(
+        self, userid: str, blocked_userid: str
+    ) -> Dict[str, str] | None:
+        conn = self.open_connection()
+        if conn is None:
+            return
 
-    def get_room_messages(self, roomid: str, limit: int = 30) -> List[Dict[str, str]]:
-        pass
+        result: Dict[str, str] = None
+
+        with conn:
+            blacklist = (userid, blocked_userid)
+            cursor = conn.cursor()
+            cursor.execute(INSERT_BLACKLIST, blacklist)
+            if cursor.rowcount != 1:
+                raise sqlite3.Error(f"Error inserting blacklisted user: {blacklist}")
+
+            conn.commit()
+
+            row = cursor.execute(
+                SELECT_RECENT_BLACKLIST, (cursor.lastrowid,)
+            ).fetchone()
+            result = {"userid": row[0], "blocked_userid": row[1]}
+        return result
+
+    def get_room_messages(
+        self, roomid: str, limit: int = 30
+    ) -> List[Dict[str, str]] | None:
+        return None
 
     def get_user_by_username(self, username: str) -> Dict[str, str]:
-        pass
+        return None
+
+    def get_room_by_name(self, name: str) -> Dict[str, str] | None:
+        return None
+
+    def get_room_list(self) -> List[Dict[str, str]] | None:
+        return None
 
 
 def test(db: SqliteDatabase):

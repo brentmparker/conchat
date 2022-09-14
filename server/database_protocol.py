@@ -20,25 +20,37 @@ class AbstractDatabase(ABC):
         roomid: str | None,
         target_userid: str | None,
         message: str,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, str] | None:
         pass
 
     @abstractmethod
-    def insert_user(self, username: str, password: str) -> Dict[str, str]:
+    def insert_user(self, username: str, password: str) -> Dict[str, str] | None:
         pass
 
     @abstractmethod
-    def insert_room(self, name: str) -> Dict[str, str]:
+    def insert_room(self, name: str) -> Dict[str, str] | None:
         pass
 
     @abstractmethod
-    def insert_blacklist(self, userid: str, blocked_userid: str):
+    def insert_blacklist(
+        self, userid: str, blocked_userid: str
+    ) -> Dict[str, str] | None:
         pass
 
     @abstractmethod
-    def get_room_messages(self, roomid: str, limit: int = 30) -> List[Dict[str, str]]:
+    def get_room_messages(
+        self, roomid: str, limit: int = 30
+    ) -> List[Dict[str, str]] | None:
         pass
 
     @abstractmethod
-    def get_user_by_username(self, username: str) -> Dict[str, str]:
+    def get_user_by_username(self, username: str) -> Dict[str, str] | None:
+        pass
+
+    @abstractmethod
+    def get_room_by_name(self, name: str) -> Dict[str, str] | None:
+        pass
+
+    @abstractmethod
+    def get_room_list(self) -> List[Dict[str, str]] | None:
         pass
