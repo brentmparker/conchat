@@ -94,6 +94,17 @@ def test_insert_message(database: SqliteDatabase):
     assert isinstance(result["createdate"], str) == True
 
 
+def test_insert_none_message(database: SqliteDatabase):
+    r1 = database.insert_room("Lobby")
+    uid = "NONE"
+    rid = r1["id"]
+    tuid = "NONE"
+    m = "I'm a message"
+
+    with pytest.raises(sqlite3.Error):
+        database.insert_chat_message(uid, rid, tuid, m)
+
+
 def test_insert_blacklisted_message(database: SqliteDatabase):
     with pytest.raises(sqlite3.Error):
         u1 = database.insert_user("User1", "Pass1")
