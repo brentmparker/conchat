@@ -116,7 +116,7 @@ def test_insert_blacklisted_message(database: SqliteDatabase):
 
         m = "I'm a message"
 
-        database.insert_chat_message(uid1, "NONE", uid2, m)
+        database.insert_chat_message(uid2, "NONE", uid1, m)
 
 
 def test_get_user_by_username(database: SqliteDatabase):
@@ -143,7 +143,7 @@ def test_get_room_by_name(database: SqliteDatabase):
     id = database.id_gen.id_cnt
 
     assert result is not None
-    assert result["id"] == id
+    assert result["id"] == str(id)
     assert result["name"] == name
     assert isinstance(result["createdate"], str) == True
 
