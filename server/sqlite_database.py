@@ -150,6 +150,46 @@ SELECT_RECENT_BLACKLIST = """
 SELECT * FROM blacklisted_users WHERE rowid = ?;
 """
 
+CREATE_TRIGGER_NONE_MESSAGE = """
+CREATE TRIGGER IF NOT EXISTS trigger_block_none_message
+    BEFORE INSERT ON messages
+BEGIN
+    SELECT
+        CASE
+            WHEN
+                NEW.authorid = 'NONE' OR
+                (NEW.roomid = 'NONE' AND NEW.target_userid = 'NONE')
+            THEN
+                RAISE (ABORT, 'authorid can not be NONE or missing one of roomid or target_userid')
+    END;
+END;
+"""
+
+DROP_TRIGGER_NONE_MESSAGE = """
+DROP TRIGGER IF EXISTS trigger_block_none_message;
+"""
+
+CREATE_TRIGGER_BLACKLIST = """
+CREATE TRIGGER IF NOT EXISTS trigger_block_message_insert
+    BEFORE INSERT ON messages
+BEGIN
+    SELECT
+        CASE
+            WHEN EXISTS(
+                SELECT *
+                FROM blacklisted_users AS b
+                WHERE
+                    NEW.authorid = b.blocked_userid AND
+                    NEW.target_userid = b.userid
+            ) THEN RAISE (ABORT, 'User has been blacklisted')
+    END;
+END;
+"""
+
+DROP_TRIGGER_BLACKLIST = """
+DROP TRIGGER IF EXISTS trigger_block_message_insert;
+"""
+
 
 class AbstractID(ABC):
     @abstractmethod
@@ -178,6 +218,8 @@ class SqliteDatabase(AbstractDatabase):
         with conn:
             cursor = conn.cursor()
             if drop:
+                cursor.execute(DROP_TRIGGER_BLACKLIST)
+                cursor.execute(DROP_TRIGGER_NONE_MESSAGE)
                 cursor.execute(DROP_TABLE_BLACKLIST)
                 cursor.execute(DROP_TABLE_MESSAGES)
                 cursor.execute(DROP_TABLE_USERS)
@@ -187,6 +229,8 @@ class SqliteDatabase(AbstractDatabase):
             cursor.execute(CREATE_TABLE_ROOMS)
             cursor.execute(CREATE_TABLE_MESSAGES)
             cursor.execute(CREATE_TABLE_BLACKLIST)
+            cursor.execute(CREATE_TRIGGER_NONE_MESSAGE)
+            cursor.execute(CREATE_TRIGGER_BLACKLIST)
 
             # Create NONE user (reference for messages.target_userid)
             data = ("NONE", "NONE", "NONE")
@@ -325,7 +369,7 @@ def test(db: SqliteDatabase):
     user1 = db.insert_user("Test", "test")
     room1 = db.insert_room("Lobby")
     message1 = db.insert_chat_message(
-        user1["username"], user1["id"], room1["id"], "NONE", "I'm a message!"
+        user1["id"], room1["id"], "NONE", "I'm a message!"
     )
 
 
