@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from multiprocessing.sharedctypes import Value
 from typing import Any, Dict, List
 import sqlite3
 import uuid
@@ -190,6 +191,37 @@ DROP_TRIGGER_BLACKLIST = """
 DROP TRIGGER IF EXISTS trigger_block_message_insert;
 """
 
+SELECT_USER_BY_USERNAME = """
+SELECT * FROM users WHERE username = ?;
+"""
+
+SELECT_ROOM_BY_NAME = """
+SELECT * FROM rooms WHERE name = ?;
+"""
+
+SELECT_ALL_ROOMS = """
+SELECT * FROM rooms
+WHERE id != 'NONE'
+ORDER BY name ASC
+"""
+
+SELECT_MESSAGES_BY_ROOMID = """
+SELECT 
+    m.id,
+    u.username AS authorname,
+    m.authorid,
+    m.roomid,
+    m.target_userid,
+    m.message,
+    m.createdate
+FROM messages AS m 
+INNER JOIN users AS u 
+    ON m.authorid = u.id
+WHERE m.roomid = ?
+ORDER BY m.createdate DESC
+LIMIT ?;
+"""
+
 
 class AbstractID(ABC):
     @abstractmethod
@@ -353,16 +385,112 @@ class SqliteDatabase(AbstractDatabase):
     def get_room_messages(
         self, roomid: str, limit: int = 30
     ) -> List[Dict[str, str]] | None:
-        return None
+        if roomid is None:
+            raise ValueError("roomid can not be None")
+        roomid = roomid.strip()
+        if len(roomid) == 0:
+            raise ValueError("roomid can not be empty")
+        if limit <= 0:
+            raise ValueError("limit must be a postive integer > 0")
+
+        conn = self.open_connection()
+        if conn is None:
+            return None
+
+        result: List[Dict[str, str]] = []
+
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_MESSAGES_BY_ROOMID, (roomid, limit))
+
+            if cursor.rowcount == 0:
+                return result
+
+            rows = cursor.fetchall()
+            for row in rows:
+                result.append(
+                    {
+                        "id": row[0],
+                        "authorname": row[1],
+                        "authorid": row[2],
+                        "roomid": row[3],
+                        "target_userid": row[4],
+                        "message": row[5],
+                        "createdate": row[6],
+                    }
+                )
+        return result
 
     def get_user_by_username(self, username: str) -> Dict[str, str]:
-        return None
+        if username is None:
+            raise ValueError("username can not be none")
+        username = username.strip()
+        if len(username) == 0:
+            raise ValueError("username can not be empty")
+        conn = self.open_connection()
+        if conn is None:
+            return None
+
+        result: Dict[str, str] | None = None
+
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_USER_BY_USERNAME, (username,))
+            if cursor.rowcount == 0:
+                return None
+
+            row = cursor.fetchone()
+            result = {
+                "id": row[0],
+                "username": row[1],
+                "password": row[2],
+                "createdate": row[3],
+            }
+
+        return result
 
     def get_room_by_name(self, name: str) -> Dict[str, str] | None:
-        return None
+        if name is None:
+            raise ValueError("name can not be None")
+        name = name.strip()
+        if len(name) == 0:
+            raise ValueError("name can not be empty")
+
+        conn = self.open_connection()
+        if conn is None:
+            return None
+
+        result: Dict[str, str] | None = None
+
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_ROOM_BY_NAME, (name,))
+
+            if cursor.rowcount == 0:
+                return None
+
+            row = cursor.fetchone()
+            result = {"id": row[0], "name": row[1], "createdate": row[2]}
+        return result
 
     def get_room_list(self) -> List[Dict[str, str]] | None:
-        return None
+        conn = self.open_connection()
+        if conn is None:
+            return None
+
+        result: List[Dict[str, str]] = []
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_ALL_ROOMS)
+            if cursor.rowcount == 0:
+                return result
+
+            rows = cursor.fetchall()
+
+            for row in rows:
+                result.append({"id": row[0], "name": row[1], "createdate": row[2]})
+
+        return result
 
 
 def test(db: SqliteDatabase):
