@@ -3,7 +3,8 @@ from multiprocessing.sharedctypes import Value
 from typing import Any, Dict, List
 import sqlite3
 import uuid
-from database_protocol import AbstractDatabase
+import logging
+from .database_protocol import AbstractDatabase
 
 DBNAME = "conchat.db"
 
@@ -13,10 +14,10 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW'))
-);
+)
 """
 DROP_TABLE_USERS = """
-DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS users
 """
 
 CREATE_TABLE_ROOMS = """
@@ -24,10 +25,10 @@ CREATE TABLE IF NOT EXISTS rooms (
     id TEXT PRIMARY KEY UNIQUE NOT NULL,
     name TEXT UNIQUE NOT NULL,
     createdate TEXT NOT NULL DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f+00:00', 'NOW'))
-);
+)
 """
 DROP_TABLE_ROOMS = """
-DROP TABLE IF EXISTS rooms;
+DROP TABLE IF EXISTS rooms
 """
 
 CREATE_TABLE_MESSAGES = """
@@ -50,10 +51,10 @@ CREATE TABLE IF NOT EXISTS messages (
         REFERENCES users (id)
         ON DELETE CASCADE
         ON UPDATE NO ACTION
-);
+)
 """
 DROP_TABLE_MESSAGES = """
-DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS messages
 """
 
 CREATE_TABLE_BLACKLIST = """
@@ -70,10 +71,10 @@ CREATE TABLE IF NOT EXISTS blacklisted_users (
         REFERENCES users (id)
         ON DELETE CASCADE
         ON UPDATE NO ACTION
-);
+)
 """
 DROP_TABLE_BLACKLIST = """
-DROP TABLE IF EXISTS blacklisted_users;
+DROP TABLE IF EXISTS blacklisted_users
 """
 
 INSERT_USER = """
@@ -85,7 +86,7 @@ INSERT INTO users (
     ?,
     ?,
     ?
-);
+)
 """
 
 INSERT_ROOM = """
@@ -111,7 +112,7 @@ INSERT INTO messages (
     ?,
     ?,
     ?
-);
+)
 """
 
 INSERT_BLACKLIST = """
@@ -121,15 +122,15 @@ INSERT INTO blacklisted_users (
 ) VALUES (
     ?,
     ?
-);
+)
 """
 
 SELECT_RECENT_USER = """
-SELECT * FROM users WHERE rowid = ?;
+SELECT * FROM users WHERE rowid = ?
 """
 
 SELECT_RECENT_ROOM = """
-SELECT * FROM rooms WHERE rowid = ?;
+SELECT * FROM rooms WHERE rowid = ?
 """
 
 SELECT_RECENT_MESSAGE = """
@@ -144,11 +145,11 @@ SELECT
 FROM messages AS m 
 INNER JOIN users AS u 
     ON m.authorid = u.id
-WHERE m.rowid = ?;
+WHERE m.rowid = ?
 """
 
 SELECT_RECENT_BLACKLIST = """
-SELECT * FROM blacklisted_users WHERE rowid = ?;
+SELECT * FROM blacklisted_users WHERE rowid = ?
 """
 
 CREATE_TRIGGER_NONE_MESSAGE = """
@@ -167,7 +168,7 @@ END;
 """
 
 DROP_TRIGGER_NONE_MESSAGE = """
-DROP TRIGGER IF EXISTS trigger_block_none_message;
+DROP TRIGGER IF EXISTS trigger_block_none_message
 """
 
 CREATE_TRIGGER_BLACKLIST = """
@@ -188,15 +189,15 @@ END;
 """
 
 DROP_TRIGGER_BLACKLIST = """
-DROP TRIGGER IF EXISTS trigger_block_message_insert;
+DROP TRIGGER IF EXISTS trigger_block_message_insert
 """
 
 SELECT_USER_BY_USERNAME = """
-SELECT * FROM users WHERE username = ?;
+SELECT * FROM users WHERE username = ?
 """
 
 SELECT_ROOM_BY_NAME = """
-SELECT * FROM rooms WHERE name = ?;
+SELECT * FROM rooms WHERE name = ?
 """
 
 SELECT_ALL_ROOMS = """
@@ -219,7 +220,7 @@ INNER JOIN users AS u
     ON m.authorid = u.id
 WHERE m.roomid = ?
 ORDER BY m.createdate DESC
-LIMIT ?;
+LIMIT ?
 """
 
 
@@ -244,14 +245,12 @@ class SqliteDatabase(AbstractDatabase):
 
     def _initialize_database(self, drop: bool = False) -> None:
         conn: sqlite3.Connection = self.open_connection()
-        if conn is None:
-            return
-
+        logging.info("Initializing database %s", self.db_name)
         with conn:
             cursor = conn.cursor()
             if drop:
-                cursor.execute(DROP_TRIGGER_BLACKLIST)
                 cursor.execute(DROP_TRIGGER_NONE_MESSAGE)
+                cursor.execute(DROP_TRIGGER_BLACKLIST)
                 cursor.execute(DROP_TABLE_BLACKLIST)
                 cursor.execute(DROP_TABLE_MESSAGES)
                 cursor.execute(DROP_TABLE_USERS)
@@ -261,15 +260,24 @@ class SqliteDatabase(AbstractDatabase):
             cursor.execute(CREATE_TABLE_ROOMS)
             cursor.execute(CREATE_TABLE_MESSAGES)
             cursor.execute(CREATE_TABLE_BLACKLIST)
-            cursor.execute(CREATE_TRIGGER_NONE_MESSAGE)
             cursor.execute(CREATE_TRIGGER_BLACKLIST)
+            cursor.execute(CREATE_TRIGGER_NONE_MESSAGE)
 
-            # Create NONE user (reference for messages.target_userid)
-            data = ("NONE", "NONE", "NONE")
-            cursor.execute(INSERT_USER, data)
+            try:
+                cursor.execute(INSERT_USER, ("NONE", "NONE", "NONE"))
+            except sqlite3.Error as e:
+                logging.debug("Error inserting 'NONE' user: %s", e)
 
-            data = ("NONE", "NONE")
-            cursor.execute(INSERT_ROOM, data)
+            try:
+                cursor.execute(INSERT_ROOM, ("NONE", "NONE"))
+            except sqlite3.Error as e:
+                logging.debug("Error inserting 'NONE' room: %s", e)
+
+            try:
+                id = self.id_gen.id()
+                cursor.execute(INSERT_ROOM, (id, "Lobby"))
+            except sqlite3.Error as e:
+                logging.debug("Error inserting 'Lobby' room: %s", e)
 
             conn.commit()
 
@@ -282,6 +290,8 @@ class SqliteDatabase(AbstractDatabase):
             )
         except sqlite3.Error as e:
             print(e)
+
+        conn.set_trace_callback(logging.info)
 
         return conn
 
@@ -403,9 +413,6 @@ class SqliteDatabase(AbstractDatabase):
             cursor = conn.cursor()
             cursor.execute(SELECT_MESSAGES_BY_ROOMID, (roomid, limit))
 
-            if cursor.rowcount == 0:
-                return result
-
             rows = cursor.fetchall()
             for row in rows:
                 result.append(
@@ -436,8 +443,6 @@ class SqliteDatabase(AbstractDatabase):
         with conn:
             cursor = conn.cursor()
             cursor.execute(SELECT_USER_BY_USERNAME, (username,))
-            if cursor.rowcount == 0:
-                return None
 
             row = cursor.fetchone()
             result = {
@@ -466,9 +471,6 @@ class SqliteDatabase(AbstractDatabase):
             cursor = conn.cursor()
             cursor.execute(SELECT_ROOM_BY_NAME, (name,))
 
-            if cursor.rowcount == 0:
-                return None
-
             row = cursor.fetchone()
             result = {"id": row[0], "name": row[1], "createdate": row[2]}
         return result
@@ -482,8 +484,6 @@ class SqliteDatabase(AbstractDatabase):
         with conn:
             cursor = conn.cursor()
             cursor.execute(SELECT_ALL_ROOMS)
-            if cursor.rowcount == 0:
-                return result
 
             rows = cursor.fetchall()
 
@@ -493,15 +493,6 @@ class SqliteDatabase(AbstractDatabase):
         return result
 
 
-def test(db: SqliteDatabase):
-    user1 = db.insert_user("Test", "test")
-    room1 = db.insert_room("Lobby")
-    message1 = db.insert_chat_message(
-        user1["id"], room1["id"], "NONE", "I'm a message!"
-    )
-
-
 if __name__ == "__main__":
     db = SqliteDatabase()
     db._initialize_database(drop=True)
-    test(db)

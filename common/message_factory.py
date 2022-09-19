@@ -6,6 +6,9 @@ _message_types = namedtuple(
     "MESSAGE_TYPES",
     [
         "chat",
+        "blacklist",
+        "join_room",
+        "list_rooms",
         "login",
         "login_response",
         "logout",
@@ -17,13 +20,26 @@ _message_types = namedtuple(
 
 MESSAGE_TYPE = "message_type"
 MESSAGE_TYPES = _message_types(
+    blacklist="blacklist",
     chat="message_chat",
+    join_room="join_room",
+    list_rooms="list_rooms",
     login="message_login",
     login_response="message_login_response",
     logout="message_logout",
     register="message_register",
     register_response="message_register_response",
     error="message_error",
+)
+
+_fields_blacklist_message = namedtuple(
+    "FIELDS_BLACKLIST_MESSAGE", ["userid", "blocked_username"]
+)
+
+_fields_list_rooms_message = namedtuple("FIELDS_LIST_ROOMS_MESSAGE", ["rooms"])
+
+_fields_join_room_message = namedtuple(
+    "FIELDS_JOIN_ROOM_MESSAGE", ["userid", "roomname"]
 )
 
 _fields_chat_message = namedtuple(
@@ -49,6 +65,16 @@ _fields_register_response_message = namedtuple(
 )
 _fields_error_message = namedtuple("FIELDS_ERROR_MESSAGE", ["errortype", "message"])
 
+FIELDS_BLACKLIST_MESSAGE = _fields_blacklist_message(
+    userid="userid", blocked_username="blocked_username"
+)
+
+FIELDS_LIST_ROOMS_MESSAGE = _fields_list_rooms_message(rooms="rooms")
+
+FIELDS_JOIN_ROOM_MESSAGE = _fields_join_room_message(
+    userid="userid", roomname="roomname"
+)
+
 FIELDS_CHAT_MESSAGE = _fields_chat_message(
     id="id",
     authorname="authorname",
@@ -58,7 +84,6 @@ FIELDS_CHAT_MESSAGE = _fields_chat_message(
     authorid="authorid",
     createdate="createdate",
 )
-
 FIELDS_CHAT_MESSAGES = _fields_chat_messages(messages="messages")
 FIELDS_LOGIN_MESSAGE = _fields_login_message(username="username", password="password")
 # registration requires same fields as login
@@ -75,11 +100,6 @@ FIELDS_LOGOUT_MESSAGE = _fields_login_response_message(
 FIELDS_REGISTER_RESPONSE_MESSAGE = _fields_register_response_message(
     username="username", status="status"
 )
-"""_summary_
-
-Returns:
-    _type_: _description_
-"""
 FIELDS_ERROR_MESSAGE = _fields_error_message(errortype="errortype", message="message")
 
 
@@ -99,21 +119,58 @@ def message_factory(
 
 
 def _get_serializer(message_type) -> Callable:
-    if message_type == MESSAGE_TYPES.chat:
-        # return _serialize_chat_message
-        return _serialize_chat_messages
-    if message_type == MESSAGE_TYPES.login:
-        return _serialize_login_message
-    if message_type == MESSAGE_TYPES.login_response:
-        return _serialize_login_response_message
-    if message_type == MESSAGE_TYPES.logout:
-        return _serialize_logout_message
-    if message_type == MESSAGE_TYPES.register:
-        return _serialize_register_message
-    if message_type == MESSAGE_TYPES.register_response:
-        return _serialize_register_response_message
-    if message_type == MESSAGE_TYPES.error:
-        return _serialize_error_message
+    match message_type:
+        case MESSAGE_TYPES.blacklist:
+            return _serialize_blacklist_message
+        case MESSAGE_TYPES.join_room:
+            return _serialize_join_room_message
+        case MESSAGE_TYPES.list_rooms:
+            return _serialize_list_rooms_message
+        case MESSAGE_TYPES.chat:
+            # return _serialize_chat_message
+            return _serialize_chat_messages
+        case MESSAGE_TYPES.login:
+            return _serialize_login_message
+        case MESSAGE_TYPES.login_response:
+            return _serialize_login_response_message
+        case MESSAGE_TYPES.logout:
+            return _serialize_logout_message
+        case MESSAGE_TYPES.register:
+            return _serialize_register_message
+        case MESSAGE_TYPES.register_response:
+            return _serialize_register_response_message
+        case MESSAGE_TYPES.error:
+            return _serialize_error_message
+
+
+def _serialize_blacklist_message(data: Dict) -> str:
+    payload = {
+        FIELDS_BLACKLIST_MESSAGE.userid: data[FIELDS_BLACKLIST_MESSAGE.userid],
+        FIELDS_BLACKLIST_MESSAGE.blocked_username: data[
+            FIELDS_BLACKLIST_MESSAGE.blocked_username
+        ],
+    }
+
+    return json.dumps(payload)
+
+
+def _serialize_list_rooms_message(data: Dict) -> str:
+    payload = {
+        FIELDS_LIST_ROOMS_MESSAGE.rooms: data.get(FIELDS_LIST_ROOMS_MESSAGE.rooms, None)
+    }
+
+    return json.dumps(payload)
+
+
+def _serialize_join_room_message(data: Dict) -> str:
+    payload = {
+        FIELDS_JOIN_ROOM_MESSAGE.userid: data[FIELDS_JOIN_ROOM_MESSAGE.userid],
+        FIELDS_JOIN_ROOM_MESSAGE.roomname: data.get(
+            FIELDS_JOIN_ROOM_MESSAGE.roomname, "Lobby"
+        ),
+    }
+
+    return json.dumps(payload)
 
 
 def _serialize_chat_message(data: Dict) -> str:
