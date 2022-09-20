@@ -21,7 +21,7 @@ class AbstractChatConnection(ABC):
         return self._is_closed
 
     @abstractmethod
-    def send(self, message: Dict[str, str]) -> None:
+    async def send(self, message: Dict[str, str]) -> None:
         pass
 
     @abstractmethod

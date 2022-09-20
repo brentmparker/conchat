@@ -2,7 +2,7 @@ import argparse
 from os import chdir, path
 import sys
 
-from server.chat_server_protocol import run_server
+from server import run_server
 from client import run_client
 
 
