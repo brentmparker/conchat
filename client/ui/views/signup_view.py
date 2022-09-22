@@ -171,9 +171,14 @@ class SignupView(TabView):
         self._password_input.value = ""
         self._password_confirm_input = ""
 
+        for widget in self.widgets:
+            widget.visible = False
+
     async def on_show_view(self, event: ShowView):
         if event.view_name != self.name:
             return
+        for widget in self.widgets:
+            widget.visible = True
         event.prevent_default().stop()
         await self._username_input.focus()
 

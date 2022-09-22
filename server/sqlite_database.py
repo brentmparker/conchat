@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 import sqlite3
 import uuid
 import logging
-from .database_protocol import AbstractDatabase
+from .database_protocol import AbstractDatabase, DBConnectionError
 
 DBNAME = "conchat.db"
 
@@ -289,7 +289,8 @@ class SqliteDatabase(AbstractDatabase):
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             )
         except sqlite3.Error as e:
-            print(e)
+            logging.error(e)
+            raise DBConnectionError(e)
 
         conn.set_trace_callback(logging.info)
 

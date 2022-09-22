@@ -2,6 +2,11 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 
+class DBConnectionError(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+
+
 class AbstractDatabase(ABC):
     @abstractmethod
     def _initialize_database(self, drop: bool = False) -> None:

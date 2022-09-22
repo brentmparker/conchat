@@ -33,10 +33,15 @@ class Director:
             self.app, Size(self.app.console.size.width, self.app.console.size.height)
         )
         await self.pop_view()
+
+        # view.visible = True
         await view.on_resize(resize)
         await self.app.push_view(view)
         # self.app.refresh()
-        await self.app.on_resize(resize)
+        resize = events.Resize(
+            self.app, Size(self.app.console.size.width, self.app.console.size.height)
+        )
+        # await self.app.on_resize(resize)
         await view.dispatch_message(ShowView(self, name))
 
     async def pop_view(self) -> None:
@@ -44,7 +49,8 @@ class Director:
             view = self.app._view_stack.pop()
             await view.dispatch_message(HideView(self.app, view.name))
             await self.app.remove(view)
-            # self.app.refresh()
+            view.visible = False
+            self.app.refresh()
 
 
 class MultiviewApp(App):

@@ -109,11 +109,15 @@ class SigninView(TabView):
     async def on_hide_view(self, event: HideView):
         if event.view_name != self.name:
             return
+        for widget in self.widgets:
+            widget.visible = False
         event.prevent_default().stop()
 
     async def on_show_view(self, event: ShowView):
         if event.view_name != self.name:
             return
+        for widget in self.widgets:
+            widget.visible = True
         event.prevent_default().stop()
         await self._username_input.focus()
 

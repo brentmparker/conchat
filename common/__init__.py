@@ -1,4 +1,4 @@
-from .errors import ERRORS
+from .errors import ERRORS, ERROR_TYPES
 from .user import User
 
 from .message_factory import (
@@ -7,6 +7,8 @@ from .message_factory import (
     FIELDS_CHAT_MESSAGE,
     FIELDS_CHAT_MESSAGES,
     FIELDS_ERROR_MESSAGE,
+    FIELDS_JOIN_ROOM_MESSAGE,
+    FIELDS_LIST_ROOMS_MESSAGE,
     FIELDS_LOGIN_MESSAGE,
     FIELDS_LOGIN_RESPONSE_MESSAGE,
     FIELDS_LOGOUT_MESSAGE,
@@ -21,11 +23,14 @@ __all__ = [
     "User",
     "ENCODING",
     "ERRORS",
+    "ERROR_TYPES",
     "MESSAGE_TYPE",
     "MESSAGE_TYPES",
     "FIELDS_CHAT_MESSAGE",
     "FIELDS_CHAT_MESSAGES",
     "FIELDS_ERROR_MESSAGE",
+    "FIELDS_JOIN_ROOM_MESSAGE",
+    "FIELDS_LIST_ROOMS_MESSAGE",
     "FIELDS_LOGIN_MESSAGE",
     "FIELDS_LOGIN_RESPONSE_MESSAGE",
     "FIELDS_LOGOUT_MESSAGE",
