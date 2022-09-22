@@ -354,7 +354,7 @@ class SqliteDatabase(AbstractDatabase):
         if conn is None:
             return
 
-        result: Dict[str, str] = None
+        result: Dict[str, str] | None = None
         with conn:
             room = (self.id_gen.id(), name)
             cursor = conn.cursor()

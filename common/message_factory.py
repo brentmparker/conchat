@@ -7,6 +7,8 @@ _message_types = namedtuple(
     [
         "chat",
         "blacklist",
+        "blacklist_response",
+        "create_room",
         "join_room",
         "list_rooms",
         "login",
@@ -21,7 +23,9 @@ _message_types = namedtuple(
 MESSAGE_TYPE = "message_type"
 MESSAGE_TYPES = _message_types(
     blacklist="blacklist",
+    blacklist_response="blacklist_response",
     chat="message_chat",
+    create_room="create_room",
     join_room="join_room",
     list_rooms="list_rooms",
     login="message_login",
@@ -35,6 +39,8 @@ MESSAGE_TYPES = _message_types(
 _fields_blacklist_message = namedtuple(
     "FIELDS_BLACKLIST_MESSAGE", ["userid", "blocked_username"]
 )
+
+_fields_create_room_message = namedtuple("FIELDS_CREATE_ROOM_MESSAGE", ["name"])
 
 _fields_list_rooms_message = namedtuple("FIELDS_LIST_ROOMS_MESSAGE", ["rooms"])
 
@@ -69,6 +75,8 @@ FIELDS_BLACKLIST_MESSAGE = _fields_blacklist_message(
     userid="userid", blocked_username="blocked_username"
 )
 
+FIELDS_CREATE_ROOM_MESSAGE = _fields_create_room_message(name="name")
+
 FIELDS_LIST_ROOMS_MESSAGE = _fields_list_rooms_message(rooms="rooms")
 
 FIELDS_JOIN_ROOM_MESSAGE = _fields_join_room_message(
@@ -91,12 +99,10 @@ FIELDS_REGISTER_MESSAGE = _fields_login_message(
     username="username", password="password"
 )
 FIELDS_LOGIN_RESPONSE_MESSAGE = _fields_login_response_message(
-    username="username", userid="userid"
+    username="username", userid="id"
 )
 # logout message requires same fields as login response
-FIELDS_LOGOUT_MESSAGE = _fields_login_response_message(
-    username="username", userid="userid"
-)
+FIELDS_LOGOUT_MESSAGE = _fields_login_response_message(username="username", userid="id")
 FIELDS_REGISTER_RESPONSE_MESSAGE = _fields_register_response_message(
     username="username", status="status"
 )
@@ -121,6 +127,8 @@ def message_factory(
 def _get_serializer(message_type) -> Callable:
     match message_type:
         case MESSAGE_TYPES.blacklist:
+            return _serialize_blacklist_message
+        case MESSAGE_TYPES.blacklist_response:
             return _serialize_blacklist_message
         case MESSAGE_TYPES.join_room:
             return _serialize_join_room_message
@@ -154,9 +162,12 @@ def _serialize_blacklist_message(data: Dict) -> str:
     return json.dumps(payload)
 
 
-def _serialize_list_rooms_message(data: Dict) -> str:
+def _serialize_list_rooms_message(data: List[str] | None) -> str:
+    if data is None:
+        data = []
     payload = {
-        FIELDS_LIST_ROOMS_MESSAGE.rooms: data.get(FIELDS_LIST_ROOMS_MESSAGE.rooms, None)
+        MESSAGE_TYPE: MESSAGE_TYPES.list_rooms,
+        FIELDS_LIST_ROOMS_MESSAGE.rooms: data,
     }
 
     return json.dumps(payload)
@@ -164,6 +175,7 @@ def _serialize_list_rooms_message(data: Dict) -> str:
 
 def _serialize_join_room_message(data: Dict) -> str:
     payload = {
+        MESSAGE_TYPE: MESSAGE_TYPES.join_room,
         FIELDS_JOIN_ROOM_MESSAGE.userid: data[FIELDS_JOIN_ROOM_MESSAGE.userid],
         FIELDS_JOIN_ROOM_MESSAGE.roomname: data.get(
             FIELDS_JOIN_ROOM_MESSAGE.roomname, "Lobby"

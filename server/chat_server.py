@@ -2,9 +2,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from msilib.schema import Error
 from multiprocessing.sharedctypes import Value
+from nis import cat
 import bcrypt
-from typing import Any, Coroutine, Dict, List
+from typing import Any, Callable, Coroutine, Dict, List
 from .chat_server_protocol import (
     AbstractChatServer,
     AbstractChatConnection,
@@ -19,6 +21,8 @@ from common import (
     User,
     MESSAGE_TYPE,
     MESSAGE_TYPES,
+    FIELDS_BLACKLIST_MESSAGE,
+    FIELDS_CREATE_ROOM_MESSAGE,
     FIELDS_CHAT_MESSAGE,
     FIELDS_CHAT_MESSAGES,
     FIELDS_ERROR_MESSAGE,
@@ -96,6 +100,14 @@ class ChatServer(AbstractChatServer):
         logging.info("Handling message: %s", message)
 
         match message[MESSAGE_TYPE]:
+            case MESSAGE_TYPES.blacklist:
+                await self.handle_blacklist(message, source)
+            case MESSAGE_TYPES.list_rooms:
+                await self.handle_list_rooms(message, source)
+            case MESSAGE_TYPES.join_room:
+                await self.handle_join_room(message, source)
+            case MESSAGE_TYPES.create_room:
+                await self.handle_create_room(message, source)
             case MESSAGE_TYPES.register:
                 await self.handle_register(message, source)
             case MESSAGE_TYPES.login:
@@ -124,35 +136,17 @@ class ChatServer(AbstractChatServer):
     async def handle_register(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
-        try:
-            username = message[FIELDS_REGISTER_MESSAGE.username]
-            password = message[FIELDS_REGISTER_MESSAGE.password]
-        except KeyError as e:
+
+        username = message.get(FIELDS_REGISTER_MESSAGE.username, "").strip()
+        password = message.get(FIELDS_REGISTER_MESSAGE.password, "").strip()
+
+        if len(username) == 0 or len(password) == 0:
             logging.error("Missing field in register message: %s", e)
             await self.handle_error(
                 ERROR_TYPES.invalid_username_password,
                 ERRORS.invalid_username_password,
                 source,
             )
-        # Check inputs
-        errors: List[str] = []
-        if username is None:
-            errors.append("Username can not be None")
-        if password is None:
-            errors.append("Password can not be None")
-        username = username.strip()
-        password = password.strip()
-        if len(username) == 0:
-            errors.append("Username can not be empty")
-        if len(password) == 0:
-            errors.append("Password can not be empty")
-
-        if len(errors) > 0:
-            error = "\n".join(errors)
-            await self.handle_error(
-                ERROR_TYPES.invalid_username_password, error, source
-            )
-            return
 
         # Add user to database
         # Get back user with userid
@@ -183,50 +177,56 @@ class ChatServer(AbstractChatServer):
     async def handle_login(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
-        try:
-            username = message[FIELDS_REGISTER_MESSAGE.username]
-            password = message[FIELDS_REGISTER_MESSAGE.password]
-        except KeyError as e:
+
+        username = message.get(FIELDS_REGISTER_MESSAGE.username, "").strip()
+        password = message.get(FIELDS_REGISTER_MESSAGE.password, "").strip()
+
+        if len(username) == 0 or len(password) == 0:
             logging.error("Missing field in register message: %s", e)
             await self.handle_error(
                 ERROR_TYPES.invalid_username_password,
                 ERRORS.invalid_username_password,
                 source,
             )
-        # Check inputs
-        errors: List[str] = []
-        if username is None:
-            errors.append("Username can not be None")
-        if password is None:
-            errors.append("Password can not be None")
-        username = username.strip()
-        password = password.strip()
-        if len(username) == 0:
-            errors.append("Username can not be empty")
-        if len(password) == 0:
-            errors.append("Password can not be empty")
 
-        if len(errors) > 0:
-            error = "\n".join(errors)
+        # select user from database
+        user: Dict[str, str] | None = None
+        try:
+            user = self._db.get_user_by_username(username)
+        except DBConnectionError as e:
             await self.handle_error(
-                ERROR_TYPES.invalid_username_password, error, source
+                ERROR_TYPES.server_error, ERRORS.server_error, source
             )
             return
-        # Select user
-        # validate password
-        # send login_response
+
+        if user is None:
+            await self.handle_error(
+                ERROR_TYPES.invalid_username_password, ERRORS.invalid_username_password
+            )
+            return
+
+        # Validate password
+        pwhash = user["password"]
+        if not bcrypt.checkpw(password.encode(ENCODING), pwhash.encode(ENCODING)):
+            await self.handle_error(
+                ERROR_TYPES.invalid_username_password, ERRORS.invalid_username_password
+            )
+
+        # Send login response
+        source.user = User(user["id"], user["username"])
+        payload = message_factory(user, MESSAGE_TYPES.login_response)
+        await source.send(payload)
+
+        # put user in lobby
+        await self._join_room(self.lobby, source)
 
     async def handle_logout(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
         if message is None:
             return
-        try:
-            userid = message[FIELDS_LOGOUT_MESSAGE.userid]
-        except Exception as e:
-            return
 
-        userid = userid.strip()
+        userid = message.get(FIELDS_LOGOUT_MESSAGE.userid, "").strip()
         if len(userid) == 0:
             return
 
@@ -242,18 +242,9 @@ class ChatServer(AbstractChatServer):
         if message is None:
             return
 
-        try:
-            name = message[FIELDS_JOIN_ROOM_MESSAGE.roomname]
-            userid = message[FIELDS_JOIN_ROOM_MESSAGE.userid]
-        except Exception as e:
-            return
-
-        name = name.strip()
-        userid = userid.strip()
-        if len(name) == 0:
-            return
-
-        if len(userid) == 0:
+        name = message.get(FIELDS_JOIN_ROOM_MESSAGE.roomname, "").strip()
+        userid = message.get(FIELDS_JOIN_ROOM_MESSAGE.userid, "").strip()
+        if len(name) == 0 or len(userid) == 0:
             return
 
         if source.user is not None and source.user.userid != userid:
@@ -283,27 +274,178 @@ class ChatServer(AbstractChatServer):
             name = room_data["name"]
             room = Chatroom(id)
             self.rooms[name] = room
+        room.join_room(source)
+        await self._join_room(room, source)
         #
+
+    async def _join_room(self, room: Chatroom, source: AbstractChatConnection):
+        messages: List[Dict[str, str]] | None = None
+        try:
+            messages = self._db.get_room_messages(room.roomid)
+        except DBConnectionError as e:
+            logging.error("Error selecting recent messages: %s", e)
+            await self.handle_error(
+                ERROR_TYPES.server_error, ERRORS.server_error, source
+            )
+        except ValueError as e:
+            logging.error("Error selecting recent messages: %s", e)
+            return
+
+        if messages is None:
+            await self.handle_error(
+                ERROR_TYPES.server_error, ERRORS.server_error, source
+            )
+
+        if len(messages) == 0:
+            return
+
+        payload = message_factory(messages, MESSAGE_TYPES.chat)
+        await source.send(payload)
 
     async def handle_list_rooms(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
-        pass
+        rooms: List[str] | None = None
+        try:
+            rooms = self._db.get_room_list()
+        except DBConnectionError as e:
+            await self.handle_error(
+                ERROR_TYPES.server_error, ERRORS.server_error, source
+            )
+
+        payload = message_factory(rooms, MESSAGE_TYPES.list_rooms)
+        await source.send(payload)
 
     async def handle_create_room(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
-        pass
+        name = message[FIELDS_CREATE_ROOM_MESSAGE.name]
+
+        room: Dict[str, str] | None = None
+        try:
+            room = self._db.insert_room(name)
+        except DBConnectionError as e:
+            await self.handle_error(
+                ERROR_TYPES.server_error, ERRORS.server_error, source
+            )
+        except Error as e:
+            if "unique" in str(e).lower():
+                await self.handle_error(
+                    ERROR_TYPES.invalid_room, "Room already exists", source
+                )
+                return
+
+        r = Chatroom(room["id"])
+        self.rooms[room["name"]] = r
+        await self._join_room(r, source)
 
     async def handle_chat(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
-        pass
+        messages = message.get(FIELDS_CHAT_MESSAGES.messages, [])
+        if len(messages) == 0:
+            return
+
+        room_messages: List[Dict[str, str]] = []
+
+        rid: str | None = None
+        tuid: str | None = None
+
+        # There should only be one message per user
+        # but let's handle multiple messages anyway
+        for message in messages:
+            authorid = message.get("authorid", "").strip()
+            roomid = message.get("roomid", "").strip()
+            target_userid = message.get("target_userid", "").strip()
+            message_content = message.get("message", "").strip()
+
+            inserted: Dict[str, str] | None = None
+            if len(authorid) == 0 or len(message_content) == 0:
+                continue
+            if len(roomid) == 0 and len(target_userid) == 0:
+                continue
+            if len(roomid) > 0:
+                rid = roomid
+            if len(target_userid) > 0:
+                tuid = target_userid
+            try:
+                inserted = self._db.insert_chat_message(
+                    authorid, roomid, target_userid, message_content
+                )
+            except DBConnectionError as e:
+                await self.handle_error(
+                    ERROR_TYPES.server_error, ERRORS.server_error, source
+                )
+                return
+            if inserted is not None:
+                room_messages.append(inserted)
+
+        payload = message_factory(room_messages, MESSAGE_TYPES.chat)
+
+        if rid is not None:
+            room = self.rooms.get(rid, None)
+            if room is None:
+                return
+            await room.forward_to_room(payload)
+        if tuid is not None:
+            conns = [
+                c
+                for c in self.connections
+                if c.user is not None and c.user.userid == tuid
+            ]
+
+            if len(conns) != 1:
+                return
+
+            await conns[0].send(payload)
 
     async def handle_blacklist(
         self, message: Dict[str, str], source: AbstractChatConnection
     ) -> None:
-        pass
+        userid = message.get(FIELDS_BLACKLIST_MESSAGE.userid, "").strip()
+        username = message.get(FIELDS_BLACKLIST_MESSAGE.blocked_username, "").strip()
+
+        if len(userid) == 0 or len(username) == 0:
+            await self.handle_error(
+                ERROR_TYPES.invalid_blacklist, ERRORS.invalid_blacklist, source
+            )
+            return
+
+        # get userid
+        blocked_user: Dict[str, str] | None = None
+        try:
+            blocked_user = self._db.get_user_by_username(username)
+        except DBConnectionError as e:
+            logging.error("error selecting user: %s", e)
+            await self.handle_error(
+                ERROR_TYPES.server_error, ERRORS.server_error, source
+            )
+            return
+
+        if blocked_user is None:
+            await self.handle_error(
+                ERROR_TYPES.invalid_blacklist, ERRORS.invalid_blacklist, source
+            )
+            return
+
+        blocked_userid = blocked_user.get("id", None)
+        if blocked_userid is None:
+            await self.handle_error(
+                ERROR_TYPES.invalid_blacklist, ERRORS.invalid_blacklist, source
+            )
+            return
+
+        result: Dict[str, str] | None = None
+        try:
+            result = self._db.insert_blacklist(userid, blocked_user)
+        except DBConnectionError as e:
+            await self.handle_error(
+                ERROR_TYPES.server_error, ERRORS.server_error, source
+            )
+            return
+        if result is not None:
+            payload = message_factory(MESSAGE_TYPES.blacklist_response, message)
+            await source.send(payload)
 
     async def handle_error(
         self, errortype: str, error: str, source: AbstractChatConnection
