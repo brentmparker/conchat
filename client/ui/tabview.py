@@ -5,6 +5,8 @@ from textual.widget import Widget
 import textual.events as events
 from textual_inputs.text_input import InputOnFocus
 
+from .messages import ErrorMessage
+
 
 class TabView(DockView, ABC):
 
@@ -57,3 +59,7 @@ class TabView(DockView, ABC):
         if event.sender in self._tabs:
             self._tab_idx = self._tabs.index(event.sender)
             self._focused = event.sender
+
+    @abstractmethod
+    async def handle_error(self, message: ErrorMessage):
+        pass

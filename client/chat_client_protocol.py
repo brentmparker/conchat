@@ -26,6 +26,15 @@ def _async(coro: Coroutine):
     return loop.create_task(coro)
 
 
+class Chatroom:
+    id: str | None = None
+    name: str | None = None
+
+    def __init__(self, id: str, name: str) -> None:
+        self.id = id
+        self.name = name
+
+
 class AbstractMessageHandler:
     @abstractmethod
     async def on_message_received(self, data: str) -> None:

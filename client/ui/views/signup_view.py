@@ -5,7 +5,7 @@ from textual_inputs import TextInput
 from ..banner import Banner
 from ..button import Button
 from ..error import Error
-from ..messages import HideView, Register, ShowView, InvalidUsername
+from ..messages import ErrorMessage, HideView, Register, ShowView, InvalidUsername
 from ..tabview import TabView
 
 BANNER = r"""
@@ -53,18 +53,18 @@ class SignupView(TabView):
         grid.add_row(name="r2", size=3)
         grid.add_row(name="r3", size=3)
         grid.add_row(name="r4", size=3)
-        grid.add_row(name="r5", size=3)
-        grid.add_row(name="r6", fraction=1)
+        grid.add_row(name="r5", size=1)
+        grid.add_row(name="r6", size=3)
+        grid.add_row(name="r7", fraction=1)
 
         grid.add_areas(
             banner_area="c1-start|c4-end,r1",
             username_area="c2-start|c3-end,r2",
-            username_error_area="c4,r2",
             password_area="c2-start|c3-end,r3",
             password_confirm_area="c2-start|c3-end,r4",
-            password_error_area="c4,r3",
-            signup_button_area="c2,r5",
-            cancel_button_area="c3,r5",
+            error_area="c2-start|c3-end,r5",
+            signup_button_area="c2,r6",
+            cancel_button_area="c3,r6",
         )
 
         self._banner = Banner(name="signupBanner", banner=BANNER)
@@ -86,8 +86,8 @@ class SignupView(TabView):
         )
         self._signup_button = Button(name="signupButton", label="Sign Up!")
         self._cancel_button = Button(name="cancelButton", label="Cancel")
-        self._username_error = Error(name="usernameError", error_message="")
-        self._password_error = Error(name="passwordError", error_message="")
+
+        self._error = Error(name="Error", error_message="")
 
         self.reset_tabs()
         self.add_taborder(
@@ -101,12 +101,11 @@ class SignupView(TabView):
         grid.place(
             banner_area=self._banner,
             username_area=self._username_input,
-            username_error_area=self._username_error,
             password_area=self._password_input,
             password_confirm_area=self._password_confirm_input,
-            password_error_area=self._password_error,
             signup_button_area=self._signup_button,
             cancel_button_area=self._cancel_button,
+            error_area=self._error,
         )
 
     async def on_key(self, event: events.Key):
@@ -134,42 +133,46 @@ class SignupView(TabView):
             confirm: str = self._password_confirm_input.value.strip()
 
             if len(username) == 0:
-                self._username_error.error_message = USERNAME_EMPTY_ERROR
-                self._username_error.refresh()
+                self._error.error_message = USERNAME_EMPTY_ERROR
+                self._error.refresh()
                 await self._username_input.focus()
                 return
             else:
-                self._username_error.error_message = ""
-                self._username_error.refresh()
+                self._error.error_message = ""
+                self._error.refresh()
+
+            if len(username.split()) > 1:
+                self._error.error_message = "Username can not contain spaces"
+                self._error.refresh()
+                await self._username_input.focus()
+            else:
+                self._error.error_message = ""
+                self._error.refresh()
 
             if len(password) == 0:
-                self._password_error.error_message = PASSWORD_EMPTY_ERROR
-                self._password_error.refresh()
+                self._error.error_message = PASSWORD_EMPTY_ERROR
+                self._error.refresh()
                 await self._password_input.focus()
                 return
             elif password != confirm:
-                self._password_error.error_message = PASSWORD_MATCH_ERROR
-                self._password_error.refresh()
+                self._error.error_message = PASSWORD_MATCH_ERROR
+                self._error.refresh()
                 await self._password_input.focus()
             else:
-                self._password_error.error_message = ""
-                self._password_error.refresh()
+                self._error.error_message = ""
+                self._error.refresh()
                 await self.emit(Register(self, username=username, password=password))
 
     async def handle_invalid_username(self, event: InvalidUsername):
-        self._username_error.error_message = "Please try another username"
-        self._password_error.error_message = ""
-        self._username_error.refresh()
-        self._password_error.refresh()
+        self._error.error_message = "Please try another username"
+        self._error.refresh()
         await self._username_input.focus()
 
     async def on_hide_view(self, event: HideView):
         if event.view_name != self.name:
             return
         event.prevent_default().stop()
-        self._username_input.value = ""
-        self._password_input.value = ""
-        self._password_confirm_input = ""
+        await self.clear()
 
         for widget in self.widgets:
             widget.visible = False
@@ -182,10 +185,13 @@ class SignupView(TabView):
         event.prevent_default().stop()
         await self._username_input.focus()
 
+    async def handle_error(self, event: ErrorMessage):
+        self._error.error_message = event.error_message
+        self._error.refresh()
+
     async def clear(self):
         self._username_input.value = ""
         self._password_input.value = ""
-        self._password_confirm_input = ""
-        self._username_error.error_message = ""
-        self._password_error.error_message = ""
+        self._password_confirm_input.value = ""
+        self._error.error_message = ""
         self.refresh()

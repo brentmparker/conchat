@@ -7,6 +7,11 @@ class DBConnectionError(Exception):
         super().__init__(*args)
 
 
+class ConstraintError(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+
+
 class AbstractDatabase(ABC):
     @abstractmethod
     def _initialize_database(self, drop: bool = False) -> None:
@@ -38,6 +43,10 @@ class AbstractDatabase(ABC):
     def insert_blacklist(
         self, userid: str, blocked_userid: str
     ) -> Dict[str, str] | None:
+        pass
+
+    @abstractmethod
+    def delete_blacklist(self, userid: str, blocked_userid: str) -> bool:
         pass
 
     @abstractmethod

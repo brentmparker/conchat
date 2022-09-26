@@ -1,5 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+import logging
 from typing import Any, Dict, List
 from common import User, ENCODING
 from .database_protocol import AbstractDatabase
@@ -41,20 +42,22 @@ class AbstractChatConnection(ABC):
 
 class Chatroom:
     connections: List[AbstractChatConnection]
-    roomid: str
+    id: str
+    name: str
 
-    def __init__(self, roomid: str) -> None:
+    def __init__(self, roomid: str, roomname: str) -> None:
         if roomid is None:
             raise ValueError("roomid can not be None")
-        self.roomid = roomid
+        self.id = roomid
+        self.name = roomname
         self.connections = []
 
     async def forward_to_room(self, message: str) -> None:
         for connection in self.connections:
-            connection.send(message)
+            await connection.send(message)
 
     def join_room(self, conn: AbstractChatConnection) -> None:
-        if conn.room.roomid != self.roomid:
+        if conn.room is None or conn.room.id != self.id:
             conn.room = self
 
         if conn in self.connections:
@@ -85,13 +88,19 @@ class AbstractChatServer(ABC):
         self.user_connections = {}
         self.connections = []
 
+        lobby_data: Dict[str, str] | None = None
+
         # Get lobby for new users
-        l = self._db.get_room_by_name("Lobby")
-        if l is None:
+        try:
+            lobby_data = self._db.get_room_by_name("Lobby")
+        except Exception as e:
+            logging.error("Could not find lobby. No default room. Exiting chat server.")
+            raise Exception(e)
+        if lobby_data is None:
             raise ValueError("Could not find lobby")
 
-        self.lobby = Chatroom(l["id"])
-        self.rooms[l["id"]] = self.lobby
+        self.lobby = Chatroom(lobby_data["id"], lobby_data["name"])
+        self.rooms[lobby_data["id"]] = self.lobby
 
         super().__init__()
 

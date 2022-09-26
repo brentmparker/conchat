@@ -1,3 +1,4 @@
+from typing import Dict, List
 from textual.message import Message, MessageTarget
 from textual.events import Event
 
@@ -44,6 +45,22 @@ class InvalidUsername(Message):
         super().__init__(sender)
 
 
+class ListRoomsMessage(Message):
+    rooms: List[str] | None = None
+
+    def __init__(self, sender: MessageTarget, rooms: List[str]) -> None:
+        super().__init__(sender)
+        self.rooms = rooms
+
+
+class ListUsersMessage(Message):
+    users: List[str] | None = None
+
+    def __init__(self, sender: MessageTarget, users: List[str]) -> None:
+        super().__init__(sender)
+        self.users = users
+
+
 class Login(Message):
     def __init__(self, sender: MessageTarget, username: str, password: str) -> None:
         super().__init__(sender)
@@ -62,10 +79,33 @@ class Logout(Message):
         self.username = username
 
 
-class Error(Message):
+class ServerResponseMessage(Message):
+    response: str | None = None
+
+    def __init__(self, sender: MessageTarget, response: str) -> None:
+        super().__init__(sender)
+        self.response = response
+
+
+class ErrorMessage(Message):
     def __init__(
         self, sender: MessageTarget, error_type: str, error_message: str
     ) -> None:
         super().__init__(sender)
         self.error_type = error_type
         self.error_message = error_message
+
+
+class CommandMessage(Message):
+    command_type: str
+    command_data: str | None = None
+
+    def __init__(
+        self,
+        sender: MessageTarget,
+        command_type: str,
+        command_data: str = None,
+    ) -> None:
+        super().__init__(sender)
+        self.command_type = command_type
+        self.command_data = command_data

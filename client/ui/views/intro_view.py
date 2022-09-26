@@ -1,9 +1,8 @@
 import textual.events as events
-from textual.layout import Layout
 from textual.widgets._button import ButtonPressed
 from ..banner import Banner
 from ..button import Button
-from ..messages import HideView, ShowView
+from ..messages import ErrorMessage, HideView, ShowView
 from ..tabview import TabView
 
 
@@ -105,3 +104,6 @@ class IntroView(TabView):
         event.prevent_default().stop()
         if hasattr(self, "_signin_button"):
             await self._signin_button.focus()
+
+    async def handle_error(self, event: ErrorMessage):
+        pass

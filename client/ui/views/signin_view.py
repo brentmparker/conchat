@@ -2,7 +2,7 @@ import textual.events as events
 from textual.layout import Layout
 from textual.widgets._button import ButtonPressed
 from textual_inputs import TextInput
-from ..messages import HideView, Login, ShowView, InvalidLogin
+from ..messages import ErrorMessage, HideView, Login, ShowView, InvalidLogin
 from ..tabview import TabView
 from ..banner import Banner
 from ..button import Button
@@ -46,16 +46,17 @@ class SigninView(TabView):
         grid.add_row(name="r1", fraction=3)
         grid.add_row(name="r2", size=3)
         grid.add_row(name="r3", size=3)
-        grid.add_row(name="r4", size=3)
-        grid.add_row(name="r5", fraction=1)
+        grid.add_row(name="r4", size=1)
+        grid.add_row(name="r5", size=3)
+        grid.add_row(name="r6", fraction=1)
 
         grid.add_areas(
             banner_area="c1-start|c4-end,r1",
             username_area="c2-start|c3-end,r2",
             password_area="c2-start|c3-end,r3",
-            error_area="c4,r2-start|r3-end",
-            signin_button_area="c2,r4",
-            cancel_button_area="c3,r4",
+            error_area="c2-start|c3-end,r4",
+            signin_button_area="c2,r5",
+            cancel_button_area="c3,r5",
         )
 
         self._banner = Banner(name="banner", banner=BANNER)
@@ -109,6 +110,7 @@ class SigninView(TabView):
     async def on_hide_view(self, event: HideView):
         if event.view_name != self.name:
             return
+        await self.clear()
         for widget in self.widgets:
             widget.visible = False
         event.prevent_default().stop()
@@ -144,6 +146,10 @@ class SigninView(TabView):
     async def handle_invalid_login(self, event: InvalidLogin):
         self._error.error_message = "Invalid username or password"
         await self._username_input.focus()
+
+    async def handle_error(self, event: ErrorMessage):
+        self._error.error_message = event.error_message
+        self._error.refresh()
 
     async def clear(self):
         self._username_input.value = ""

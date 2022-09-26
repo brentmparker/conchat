@@ -15,8 +15,8 @@ def main(args: argparse.Namespace):
     if server:
         print("Start server")
         run_server(host=host, port=port)
-
-    run_client(host=host, port=port, test=test, protocol_type=protocol)
+    else:
+        run_client(host=host, port=port, test=test, protocol_type=protocol)
 
 
 if __name__ == "__main__":
